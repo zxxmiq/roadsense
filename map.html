@@ -1,89 +1,75 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Карта дефектов RoadSense</title>
-    <!-- Leaflet CSS/JS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- Supabase JS -->
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-    <style>
-        #map { height: 100vh; }
-        .custom-icon { background: none; border: none; }
-        .custom-icon img { width: 30px; height: 30px; }
-    </style>
+  <title>Карта дефектов</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; }
+    .marker-icon { 
+      width: 25px;
+      height: 25px;
+      border-radius: 50%;
+      background: red;
+      border: 2px solid white;
+    }
+  </style>
 </head>
 <body>
-    <div id="map"></div>
+  <div id="map"></div>
 
-    <script>
-        // Инициализация Supabase
-        const supabaseUrl = 'https://ВАШ-PROJECT.supabase.co';
-        const supabaseKey = 'ВАШ-ANON-KEY';
-        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  
+  <script>
+    // 1. Инициализация
+    console.log("Запуск приложения...");
+    const supabaseUrl = 'https://scurmlyhinusulzvetad.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjdXJtbHloaW51c3VsenZldGFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgxMjEwNjUsImV4cCI6MjA2MzY5NzA2NX0.D4cshax0gc7VG_GYawBckqVFQesOGJyPyDznCqsfs0k';
+    const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    
+    // 2. Создание карты
+    const map = L.map('map').setView([55.751244, 37.618423], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    console.log("Карта создана");
 
-        // Инициализация карты (центр на Москве по умолчанию)
-        const map = L.map('map').setView([55.751244, 37.618423], 13);
+    // 3. Функция добавления маркера
+    function addDefectMarker(defect) {
+      const [lat, lng] = defect.coordinates;
+      const marker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: 'defect-marker',
+          html: `<div class="marker-icon"></div>`,
+          iconSize: [25, 25]
+        })
+      }).bindPopup(`<b>${defect.type}</b><br>${defect.timestamp}`);
+      
+      marker.addTo(map);
+      console.log("Добавлен маркер:", defect);
+    }
+
+    // 4. Загрузка данных
+    async function loadDefects() {
+      console.log("Загрузка дефектов...");
+      try {
+        const { data, error } = await supabase
+          .from('defects')
+          .select('*');
         
-        // Добавляем слой OpenStreetMap
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        }).addTo(map);
-
-        // Загрузка дефектов
-        async function loadDefects() {
-            const { data, error } = await supabase
-                .from('defects')
-                .select('*');
-            
-            if (data) {
-                data.forEach(defect => {
-                    const [lat, lng] = defect.coordinates;
-                    const icon = L.divIcon({
-                        className: 'custom-icon',
-                        html: `<img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${getColor(defect.type)}.png">`
-                    });
-                    
-                    L.marker([lat, lng], { icon })
-                        .bindPopup(`<b>${defect.type}</b><br>${new Date(defect.timestamp).toLocaleString()}`)
-                        .addTo(map);
-                });
-            }
-        }
-
-        // Цвет маркера в зависимости от типа
-        function getColor(type) {
-            return {
-                'Яма': 'red',
-                'Трещина': 'blue',
-                'Кочка': 'orange'
-            }[type] || 'violet';
-        }
-
-        // Запускаем при загрузке
-        document.addEventListener('DOMContentLoaded', loadDefects);
-
-        // Подписка на изменения
-const channel = supabase
-    .channel('defects-changes')
-    .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'defects'
-    }, (payload) => {
-        // Добавляем новый маркер
-        const defect = payload.new;
-        const [lat, lng] = defect.coordinates;
-        const icon = L.divIcon({
-            className: 'custom-icon',
-            html: `<img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${getColor(defect.type)}.png">`
-        });
+        if (error) throw error;
         
-        L.marker([lat, lng], { icon })
-            .bindPopup(`<b>${defect.type}</b><br>${new Date(defect.timestamp).toLocaleString()}`)
-            .addTo(map);
-    })
-    .subscribe();
-    </script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        console.log("Получено дефектов:", data.length);
+        data.forEach(addDefectMarker);
+        
+      } catch (error) {
+        console.error("Ошибка загрузки:", error);
+      }
+    }
+
+    // 5. Запуск
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log("DOM загружен");
+      loadDefects();
+    });
+  </script>
 </body>
 </html>

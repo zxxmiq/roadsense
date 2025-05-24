@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Карта дефектов RoadSense</title>
+    <!-- Leaflet CSS/JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Supabase JS -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        #map { height: 100vh; }
+        .custom-icon { background: none; border: none; }
+        .custom-icon img { width: 30px; height: 30px; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        // Инициализация Supabase
+        const supabaseUrl = 'https://ВАШ-PROJECT.supabase.co';
+        const supabaseKey = 'ВАШ-ANON-KEY';
+        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+        // Инициализация карты (центр на Москве по умолчанию)
+        const map = L.map('map').setView([55.751244, 37.618423], 13);
+        
+        // Добавляем слой OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+
+        // Загрузка дефектов
+        async function loadDefects() {
+            const { data, error } = await supabase
+                .from('defects')
+                .select('*');
+            
+            if (data) {
+                data.forEach(defect => {
+                    const [lat, lng] = defect.coordinates;
+                    const icon = L.divIcon({
+                        className: 'custom-icon',
+                        html: `<img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${getColor(defect.type)}.png">`
+                    });
+                    
+                    L.marker([lat, lng], { icon })
+                        .bindPopup(`<b>${defect.type}</b><br>${new Date(defect.timestamp).toLocaleString()}`)
+                        .addTo(map);
+                });
+            }
+        }
+
+        // Цвет маркера в зависимости от типа
+        function getColor(type) {
+            return {
+                'Яма': 'red',
+                'Трещина': 'blue',
+                'Кочка': 'orange'
+            }[type] || 'violet';
+        }
+
+        // Запускаем при загрузке
+        document.addEventListener('DOMContentLoaded', loadDefects);
+    </script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</body>
+</html>

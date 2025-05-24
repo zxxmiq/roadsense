@@ -61,6 +61,28 @@
 
         // Запускаем при загрузке
         document.addEventListener('DOMContentLoaded', loadDefects);
+
+        // Подписка на изменения
+const channel = supabase
+    .channel('defects-changes')
+    .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'defects'
+    }, (payload) => {
+        // Добавляем новый маркер
+        const defect = payload.new;
+        const [lat, lng] = defect.coordinates;
+        const icon = L.divIcon({
+            className: 'custom-icon',
+            html: `<img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${getColor(defect.type)}.png">`
+        });
+        
+        L.marker([lat, lng], { icon })
+            .bindPopup(`<b>${defect.type}</b><br>${new Date(defect.timestamp).toLocaleString()}`)
+            .addTo(map);
+    })
+    .subscribe();
     </script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>

@@ -126,38 +126,43 @@
 
     // 6. Добавление маркера
     function addDefectMarker(defect) {
-      try {
-        let lat, lng;
-        
-        if (defect.coordinates?.coordinates) {
-          [lng, lat] = defect.coordinates.coordinates;
-        } else if (defect.latitude && defect.longitude) {
-          lat = defect.latitude;
-          lng = defect.longitude;
-        } else if (Array.isArray(defect.coordinates)) {
-          [lat, lng] = defect.coordinates;
-          if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-            [lng, lat] = defect.coordinates;
-          }
-        } else {
-          throw new Error(`Неизвестный формат координат`);
-        }
-
-        const marker = L.marker([lat, lng], {
-          icon: createCustomIcon(defect.type)
-        }).bindPopup(`
-          <b>Тип:</b> ${defect.type}<br>
-          <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
-          <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
-        `);
-        
-        marker.addTo(map);
-        return true;
-      } catch (error) {
-        console.error(`Ошибка маркера (ID ${defect.id || 'unknown'}):`, error);
-        return false;
-      }
+  try {
+    // Проверка доступности карты
+    if (!window.mapInstance || window.mapInstance._destroyed) {
+      throw new Error("Карта не инициализирована или уничтожена");
     }
+
+    let lat, lng;
+    
+    if (defect.coordinates?.coordinates) {
+      [lng, lat] = defect.coordinates.coordinates;
+    } else if (defect.latitude && defect.longitude) {
+      lat = defect.latitude;
+      lng = defect.longitude;
+    } else if (Array.isArray(defect.coordinates)) {
+      [lat, lng] = defect.coordinates;
+      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        [lng, lat] = defect.coordinates;
+      }
+    } else {
+      throw new Error("Неизвестный формат координат");
+    }
+
+    const marker = L.marker([lat, lng], {
+      icon: createCustomIcon(defect.type)
+    }).bindPopup(`
+      <b>Тип:</b> ${defect.type}<br>
+      <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
+      <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
+    `);
+    
+    marker.addTo(window.mapInstance);
+    return true;
+  } catch (error) {
+    console.error(`Ошибка маркера (ID ${defect.id || 'unknown'}):`, error);
+    return false;
+  }
+}
 
     // 7. Загрузка данных
     async function loadDefects() {

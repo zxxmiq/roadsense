@@ -31,7 +31,7 @@
       z-index: 1000;
       box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
-    /* НОВЫЙ СТИЛЬ КНОПКИ */
+    /* Стиль кнопки геолокации */
     #locate-btn {
       position: absolute;
       bottom: 20px;
@@ -57,7 +57,7 @@
     #locate-btn:active {
       transform: scale(0.95);
     }
-    /* Стиль для круга геолокации */
+    /* Стиль для маркера геолокации */
     .location-pin {
       background: white;
       border: 2px solid #136AEC;
@@ -83,7 +83,6 @@
 <body>
   <div id="map"></div>
   <div id="status">Инициализация карты...</div>
-  <!-- Кнопка будет добавлена через JS -->
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
@@ -105,11 +104,11 @@
     // Глобальные переменные
     let map;
     let supabaseClient;
-    let userLocationCircle = null; // Для хранения круга геолокации
-    let userLocationMarker = null; // Для маркера местоположения
+    let userLocationMarker = null;
+    let userLocationCircle = null;
 
     // Функция геолокации
-    ffunction locateUser() {
+    function locateUser() {
       if (!map) return;
       
       updateStatus("Определение местоположения...");
@@ -124,11 +123,10 @@
         return;
       }
       
-      // Запрашиваем геолокацию напрямую через API браузера
+      // Запрашиваем геолокацию
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const { latitude, longitude, accuracy } = position.coords;
-          const userLocation = L.latLng(latitude, longitude);
+          const userLocation = L.latLng(position.coords.latitude, position.coords.longitude);
           
           // Создаем кастомный маркер
           userLocationMarker = L.marker(userLocation, {
@@ -192,39 +190,8 @@
       btn.innerHTML = '📍';
       document.body.appendChild(btn);
       btn.addEventListener('click', locateUser);
-      
-      // Обработчики геолокации
-      map.on('locationfound', (e) => {
-        // Удаляем предыдущий круг, если есть
-        if (userLocationCircle) {
-          map.removeLayer(userLocationCircle);
-        }
-        
-        // Создаем новый круг с фиксированным радиусом 5 метров
-        userLocationCircle = L.circle(e.latlng, {
-          radius: 5, // Фиксированный радиус 5 метров
-          color: '#136AEC',
-          fillColor: '#2A93EE',
-          fillOpacity: 0.3, // Полупрозрачный
-          weight: 1
-        }).addTo(map);
-        
-        // Центрируем карту с небольшим смещением вверх
-        map.setView(e.latlng, 16, {
-          animate: true,
-          duration: 1
-        });
-      });
-      
-      map.on('locationerror', (e) => {
-        console.error("Геолокация недоступна:", e.message);
-        updateStatus("Разрешите доступ к геопозиции", true);
-      });
     }
 
-    // Остальные функции (updateStatus, createCustomIcon, addDefectMarker, loadDefects)
-    // ... (остаются без изменений, как в вашем предыдущем коде)
-    
     function updateStatus(message, isError = false) {
       const status = document.getElementById('status');
       status.textContent = message;
@@ -271,7 +238,7 @@
         }).bindPopup(`
           <b>Тип:</b> ${defect.type}<br>
           <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
-          <b>Координаты:</b> ${lat.toFixed(10)}, ${lng.toFixed(10)}
+          <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
         `);
         
         marker.addTo(map);

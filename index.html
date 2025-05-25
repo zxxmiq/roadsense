@@ -31,6 +31,19 @@
       z-index: 1000;
       box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
+    /* НОВОЕ: Стиль для кнопки геолокации */
+    #locate-btn {
+      position: absolute;
+      top: 70px;
+      right: 10px;
+      z-index: 1000;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -48,8 +61,9 @@
         url: 'https://scurmlyhinusulzvetad.supabase.co',
         key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjdXJtbHloaW51c3VsenZldGFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgxMjEwNjUsImV4cCI6MjA2MzY5NzA2NX0.D4cshax0gc7VG_GYawBckqVFQesOGJyPyDznCqsfs0k'
       },
+      // ИЗМЕНЕНО: Центр на Санкт-Петербург
       map: {
-        center: [55.751244, 37.618423],
+        center: [59.934280, 30.335098], // Координаты Дворцовой площади
         zoom: 13,
         tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
       }
@@ -57,47 +71,85 @@
 
     // 1. Инициализация приложения
     console.log("Инициализация приложения...");
-    let map;
     let supabaseClient;
+
+    // НОВОЕ: Функция геолокации
+    function locateUser() {
+      if (!window.mapInstance) {
+        console.error("Карта не инициализирована");
+        return;
+      }
+      
+      window.mapInstance.locate({
+        setView: true,
+        maxZoom: 16,
+        timeout: 10000,
+        enableHighAccuracy: true
+      });
+
+      // Успешное определение местоположения
+      window.mapInstance.on('locationfound', (e) => {
+        const radius = e.accuracy / 2;
+        L.circle(e.latlng, {
+          radius: radius,
+          color: '#136AEC',
+          fillColor: '#2A93EE',
+          fillOpacity: 0.2
+        }).addTo(window.mapInstance).bindPopup("Вы здесь (точность ±" + radius.toFixed(0) + "м)");
+      });
+
+      // Ошибка геолокации
+      window.mapInstance.on('locationerror', (e) => {
+        console.error("Геолокация недоступна:", e.message);
+        updateStatus("Разрешите доступ к геопозиции", true);
+      });
+    }
 
     // 2. Инициализация Supabase (первая операция)
     function initSupabase() {
-    try {
-      if (typeof supabase === 'undefined') {
-        throw new Error('Библиотека Supabase не загружена');
+      try {
+        if (typeof supabase === 'undefined') {
+          throw new Error('Библиотека Supabase не загружена');
+        }
+        
+        window.supabaseClient = supabase.createClient(
+          CONFIG.supabase.url,
+          CONFIG.supabase.key
+        );
+        console.log("Supabase подключен");
+        return true;
+      } catch (error) {
+        console.error("Ошибка Supabase:", error);
+        updateStatus("Ошибка подключения к базе", true);
+        return false;
       }
-      
-      window.supabaseClient = supabase.createClient( // Используем window для глобального доступа
-        CONFIG.supabase.url,
-        CONFIG.supabase.key
-      );
-      console.log("Supabase подключен");
-      return true;
-    } catch (error) {
-      console.error("Ошибка Supabase:", error);
-      updateStatus("Ошибка подключения к базе", true);
-      return false;
     }
-  }
 
     // 3. Инициализация карты
     function initMap() {
-    try {
-      if (window.mapInstance) { // Проверяем, не создана ли карта ранее
-        console.log("Карта уже инициализирована");
+      try {
+        if (window.mapInstance && !window.mapInstance._destroyed) {
+          return true;
+        }
+        
+        window.mapInstance = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
+        L.tileLayer(CONFIG.map.tileLayer).addTo(window.mapInstance);
+        
+        // НОВОЕ: Добавляем кнопку геолокации
+        const btn = document.createElement('button');
+        btn.id = 'locate-btn';
+        btn.innerHTML = '📍 Мое местоположение';
+        document.body.appendChild(btn);
+        btn.addEventListener('click', locateUser);
+        
+        console.log("Карта создана");
         return true;
+      } catch (error) {
+        console.error("Ошибка карты:", error);
+        updateStatus("Ошибка создания карты", true);
+        return false;
       }
-      
-      window.mapInstance = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
-      L.tileLayer(CONFIG.map.tileLayer).addTo(window.mapInstance);
-      console.log("Карта создана");
-      return true;
-    } catch (error) {
-      console.error("Ошибка карты:", error);
-      updateStatus("Ошибка создания карты", true);
-      return false;
     }
-  }
 
     // 4. Обновление статуса
     function updateStatus(message, isError = false) {
@@ -126,95 +178,95 @@
 
     // 6. Добавление маркера
     function addDefectMarker(defect) {
-  try {
-    // Проверка доступности карты
-    if (!window.mapInstance || window.mapInstance._destroyed) {
-      throw new Error("Карта не инициализирована или уничтожена");
-    }
+      try {
+        if (!window.mapInstance || window.mapInstance._destroyed) {
+          throw new Error("Карта не инициализирована");
+        }
 
-    let lat, lng;
-    
-    if (defect.coordinates?.coordinates) {
-      [lng, lat] = defect.coordinates.coordinates;
-    } else if (defect.latitude && defect.longitude) {
-      lat = defect.latitude;
-      lng = defect.longitude;
-    } else if (Array.isArray(defect.coordinates)) {
-      [lat, lng] = defect.coordinates;
-      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-        [lng, lat] = defect.coordinates;
+        let lat, lng;
+        
+        if (defect.coordinates?.coordinates) {
+          [lng, lat] = defect.coordinates.coordinates;
+        } else if (defect.latitude && defect.longitude) {
+          lat = defect.latitude;
+          lng = defect.longitude;
+        } else if (Array.isArray(defect.coordinates)) {
+          [lat, lng] = defect.coordinates;
+          if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            [lng, lat] = defect.coordinates;
+          }
+        } else {
+          throw new Error("Неизвестный формат координат");
+        }
+
+        const marker = L.marker([lat, lng], {
+          icon: createCustomIcon(defect.type)
+        }).bindPopup(`
+          <b>Тип:</b> ${defect.type}<br>
+          <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
+          <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
+        `);
+        
+        marker.addTo(window.mapInstance);
+        return true;
+      } catch (error) {
+        console.error(`Ошибка маркера (ID ${defect.id || 'unknown'}):`, error);
+        return false;
       }
-    } else {
-      throw new Error("Неизвестный формат координат");
     }
-
-    const marker = L.marker([lat, lng], {
-      icon: createCustomIcon(defect.type)
-    }).bindPopup(`
-      <b>Тип:</b> ${defect.type}<br>
-      <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
-      <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
-    `);
-    
-    marker.addTo(window.mapInstance);
-    return true;
-  } catch (error) {
-    console.error(`Ошибка маркера (ID ${defect.id || 'unknown'}):`, error);
-    return false;
-  }
-}
 
     // 7. Загрузка данных
     async function loadDefects() {
-    if (!window.supabaseClient) { // Используем window.supabaseClient
-      updateStatus("База данных не подключена", true);
-      return;
+      if (!window.supabaseClient) {
+        updateStatus("База данных не подключена", true);
+        return;
+      }
+
+      updateStatus("Загрузка данных...");
+      
+      try {
+        const { data, error } = await window.supabaseClient
+          .from('defects')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .limit(100);
+        
+        if (error) throw error;
+        if (!data?.length) throw new Error("Нет данных о дефектах");
+
+        window.mapInstance.eachLayer(layer => {
+          if (layer instanceof L.Marker) window.mapInstance.removeLayer(layer);
+        });
+
+        const successCount = data.filter(addDefectMarker).length;
+        updateStatus(`Загружено: ${successCount}/${data.length} дефектов`);
+        
+      } catch (error) {
+        console.error("Ошибка загрузки:", error);
+        updateStatus(`Ошибка: ${error.message}`, true);
+      }
     }
 
-    updateStatus("Загрузка данных...");
-    
-    try {
-      const { data, error } = await window.supabaseClient // Используем window.supabaseClient
-        .from('defects')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(100);
+    // 8. Основная инициализация
+    function initializeApp() {
+      console.log("Инициализация приложения...");
       
-      if (error) throw error;
-      if (!data?.length) throw new Error("Нет данных о дефектах");
-
-      // Очищаем старые маркеры
-      window.mapInstance.eachLayer(layer => {
-        if (layer instanceof L.Marker) window.mapInstance.removeLayer(layer);
-      });
-
-      // Добавляем новые
-      const successCount = data.filter(addDefectMarker).length;
-      updateStatus(`Загружено: ${successCount}/${data.length} дефектов`);
+      if (!initSupabase()) return;
+      if (!initMap()) return;
       
-    } catch (error) {
-      console.error("Ошибка загрузки:", error);
-      updateStatus(`Ошибка: ${error.message}`, true);
+      // НОВОЕ: Автоматический запрос геолокации
+      locateUser();
+      
+      loadDefects();
+      setInterval(loadDefects, 300000);
     }
-  }
 
-    // 8. Основная инициализация (убираем дублирование)
-  function initializeApp() {
-    console.log("Инициализация приложения...");
-    
-    if (!initSupabase()) return;
-    if (!initMap()) return;
-    
-    loadDefects();
-    setInterval(loadDefects, 300000);
-  }
-
-  // Запускаем приложение после загрузки страницы
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeApp);
-  } else {
-    initializeApp(); // Если страница уже загружена
-  }
+    // Запускаем приложение
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeApp);
+    } else {
+      initializeApp();
+    }
   </script>
 </body>
 </html>

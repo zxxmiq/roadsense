@@ -188,7 +188,7 @@
         }).bindPopup(`
           <b>Тип:</b> ${defect.type}<br>
           <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
-          <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
+          <b>Координаты:</b> ${lat.toFixed(10)}, ${lng.toFixed(10)}
         `);
         
         marker.addTo(map);

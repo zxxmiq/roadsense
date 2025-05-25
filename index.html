@@ -62,37 +62,42 @@
 
     // 2. Инициализация Supabase (первая операция)
     function initSupabase() {
-  try {
-    // Явная проверка
-    if (typeof supabase === 'undefined') {
-      throw new Error('Supabase library not loaded');
+    try {
+      if (typeof supabase === 'undefined') {
+        throw new Error('Библиотека Supabase не загружена');
+      }
+      
+      window.supabaseClient = supabase.createClient( // Используем window для глобального доступа
+        CONFIG.supabase.url,
+        CONFIG.supabase.key
+      );
+      console.log("Supabase подключен");
+      return true;
+    } catch (error) {
+      console.error("Ошибка Supabase:", error);
+      updateStatus("Ошибка подключения к базе", true);
+      return false;
     }
-    
-    supabaseClient = supabase.createClient(
-      'https://scurmlyhinusulzvetad.supabase.co',
-      'eyJhbGciOiJIUzI1NiIs...'
-    );
-    return true;
-  } catch (error) {
-    console.error("Supabase init error:", error);
-    updateStatus("Ошибка подключения к базе", true);
-    return false;
   }
-}
 
     // 3. Инициализация карты
     function initMap() {
-      try {
-        map = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
-        L.tileLayer(CONFIG.map.tileLayer).addTo(map);
-        console.log("Карта инициализирована");
+    try {
+      if (window.mapInstance) { // Проверяем, не создана ли карта ранее
+        console.log("Карта уже инициализирована");
         return true;
-      } catch (error) {
-        console.error("Ошибка инициализации карты:", error);
-        updateStatus("Ошибка создания карты", true);
-        return false;
       }
+      
+      window.mapInstance = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
+      L.tileLayer(CONFIG.map.tileLayer).addTo(window.mapInstance);
+      console.log("Карта создана");
+      return true;
+    } catch (error) {
+      console.error("Ошибка карты:", error);
+      updateStatus("Ошибка создания карты", true);
+      return false;
     }
+  }
 
     // 4. Обновление статуса
     function updateStatus(message, isError = false) {
@@ -156,57 +161,55 @@
 
     // 7. Загрузка данных
     async function loadDefects() {
-      if (!supabase) {
-        updateStatus("База данных не подключена", true);
-        return;
-      }
-
-      updateStatus("Загрузка данных...");
-      
-      try {
-        const { data, error } = await supabase
-          .from('defects')
-          .select('*')
-          .order('timestamp', { ascending: false })
-          .limit(100);
-        
-        if (error) throw error;
-        if (!data?.length) throw new Error("Нет данных о дефектах");
-
-        // Очищаем старые маркеры
-        map.eachLayer(layer => {
-          if (layer instanceof L.Marker) map.removeLayer(layer);
-        });
-
-        // Добавляем новые
-        const successCount = data.filter(addDefectMarker).length;
-        updateStatus(`Загружено: ${successCount}/${data.length} дефектов`);
-        
-      } catch (error) {
-        console.error("Ошибка загрузки:", error);
-        updateStatus(`Ошибка: ${error.message}`, true);
-      }
+    if (!window.supabaseClient) { // Используем window.supabaseClient
+      updateStatus("База данных не подключена", true);
+      return;
     }
 
-    // 8. Основная инициализация
-    document.addEventListener('DOMContentLoaded', async () => {
-      console.log("DOM загружен");
+    updateStatus("Загрузка данных...");
+    
+    try {
+      const { data, error } = await window.supabaseClient // Используем window.supabaseClient
+        .from('defects')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(100);
       
-      if (!initSupabase()) return;
-      if (!initMap()) return;
-      
-      // Первая загрузка
-      await loadDefects();
+      if (error) throw error;
+      if (!data?.length) throw new Error("Нет данных о дефектах");
 
-      window.addEventListener('DOMContentLoaded', () => {
-  if (!initSupabase()) return;
-  initMap();
-  loadDefects();
-});
+      // Очищаем старые маркеры
+      window.mapInstance.eachLayer(layer => {
+        if (layer instanceof L.Marker) window.mapInstance.removeLayer(layer);
+      });
+
+      // Добавляем новые
+      const successCount = data.filter(addDefectMarker).length;
+      updateStatus(`Загружено: ${successCount}/${data.length} дефектов`);
       
-      // Автообновление каждые 5 минут
-      setInterval(loadDefects, 300000);
-    });
+    } catch (error) {
+      console.error("Ошибка загрузки:", error);
+      updateStatus(`Ошибка: ${error.message}`, true);
+    }
+  }
+
+    // 8. Основная инициализация (убираем дублирование)
+  function initializeApp() {
+    console.log("Инициализация приложения...");
+    
+    if (!initSupabase()) return;
+    if (!initMap()) return;
+    
+    loadDefects();
+    setInterval(loadDefects, 300000);
+  }
+
+  // Запускаем приложение после загрузки страницы
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeApp);
+  } else {
+    initializeApp(); // Если страница уже загружена
+  }
   </script>
 </body>
 </html>

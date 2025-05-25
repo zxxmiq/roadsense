@@ -29,132 +29,170 @@
       padding: 5px 10px;
       border-radius: 5px;
       z-index: 1000;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div id="status">Загрузка данных...</div>
+  <div id="status">Инициализация карты...</div>
 
+  <!-- Подключаем библиотеки в правильном порядке -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   
   <script>
-    // 1. Инициализация
-    console.log("Запуск приложения...");
-    const supabaseUrl = 'https://scurmlyhinusulzvetad.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjdXJtbHloaW51c3VsenZldGFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgxMjEwNjUsImV4cCI6MjA2MzY5NzA2NX0.D4cshax0gc7VG_GYawBckqVFQesOGJyPyDznCqsfs0k';
-    const supabase = supabase.createClient(supabaseUrl, supabaseKey);
-    console.log("Проверка Supabase...");
-supabase.from('defects').select('*', { count: 'exact' })
-  .then(({ count }) => {
-    console.log(`Подключение к Supabase успешно, всего записей: ${count}`);
-  })
-  .catch(error => {
-    console.error("Ошибка подключения к Supabase:", error);
-  });
-    
-    // 2. Создание карты
-    const map = L.map('map').setView([55.751244, 37.618423], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    console.log("Карта создана");
+    // 0. Конфигурация (вынесено отдельно для наглядности)
+    const CONFIG = {
+      supabase: {
+        url: 'https://scurmlyhinusulzvetad.supabase.co',
+        key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjdXJtbHloaW51c3VsenZldGFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgxMjEwNjUsImV4cCI6MjA2MzY5NzA2NX0.D4cshax0gc7VG_GYawBckqVFQesOGJyPyDznCqsfs0k'
+      },
+      map: {
+        center: [55.751244, 37.618423],
+        zoom: 13,
+        tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+      }
+    };
 
-    // 3. Кастомные иконки для разных типов дефектов
+    // 1. Инициализация приложения
+    console.log("Инициализация приложения...");
+    let map;
+    let supabase;
+
+    // 2. Инициализация Supabase (первая операция)
+    function initSupabase() {
+      try {
+        supabase = supabase.createClient(CONFIG.supabase.url, CONFIG.supabase.key);
+        console.log("Supabase инициализирован");
+        return true;
+      } catch (error) {
+        console.error("Ошибка инициализации Supabase:", error);
+        updateStatus("Ошибка подключения к базе", true);
+        return false;
+      }
+    }
+
+    // 3. Инициализация карты
+    function initMap() {
+      try {
+        map = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
+        L.tileLayer(CONFIG.map.tileLayer).addTo(map);
+        console.log("Карта инициализирована");
+        return true;
+      } catch (error) {
+        console.error("Ошибка инициализации карты:", error);
+        updateStatus("Ошибка создания карты", true);
+        return false;
+      }
+    }
+
+    // 4. Обновление статуса
+    function updateStatus(message, isError = false) {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.style.background = isError ? '#ffebee' : 'white';
+      status.style.color = isError ? '#d32f2f' : 'black';
+    }
+
+    // 5. Кастомные иконки
     const iconTypes = {
-      'яма': { color: 'red', symbol: '🕳️' },
-      'кочка': { color: 'orange', symbol: '⛰️' },
-      'трещина': { color: 'yellow', symbol: '⚡' }
+      'яма': { color: '#e53935', symbol: '🕳️' },
+      'кочка': { color: '#fb8c00', symbol: '⛰️' },
+      'трещина': { color: '#fdd835', symbol: '⚡' },
+      'default': { color: '#4285f4', symbol: '❓' }
     };
 
     function createCustomIcon(type) {
-      const style = iconTypes[type] || { color: 'blue', symbol: '❓' };
+      const style = iconTypes[type.toLowerCase()] || iconTypes.default;
       return L.divIcon({
         className: 'defect-marker',
         html: `<div class="custom-icon" style="background:${style.color}">${style.symbol}</div>`,
-        iconSize: [25, 25]
+        iconSize: [30, 30]
       });
     }
 
-    // 4. Функция добавления маркера
+    // 6. Добавление маркера
     function addDefectMarker(defect) {
-  try {
-    let lat, lng;
-    
-    // Формат 1: GeoJSON { coordinates: [lng, lat] }
-    if (defect.coordinates?.coordinates) {
-      [lng, lat] = defect.coordinates.coordinates;
-    } 
-    // Формат 2: Прямые поля в объекте
-    else if (defect.latitude && defect.longitude) {
-      lat = defect.latitude;
-      lng = defect.longitude;
-    }
-    // Формат 3: Массив [lat, lng] или [lng, lat]
-    else if (Array.isArray(defect.coordinates)) {
-      lat = defect.coordinates[0];
-      lng = defect.coordinates[1];
-      // Проверяем, не перепутаны ли lat/lng
-      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-        [lng, lat] = defect.coordinates; // Меняем местами если значения выходят за пределы
+      try {
+        let lat, lng;
+        
+        if (defect.coordinates?.coordinates) {
+          [lng, lat] = defect.coordinates.coordinates;
+        } else if (defect.latitude && defect.longitude) {
+          lat = defect.latitude;
+          lng = defect.longitude;
+        } else if (Array.isArray(defect.coordinates)) {
+          [lat, lng] = defect.coordinates;
+          if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            [lng, lat] = defect.coordinates;
+          }
+        } else {
+          throw new Error(`Неизвестный формат координат`);
+        }
+
+        const marker = L.marker([lat, lng], {
+          icon: createCustomIcon(defect.type)
+        }).bindPopup(`
+          <b>Тип:</b> ${defect.type}<br>
+          <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
+          <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
+        `);
+        
+        marker.addTo(map);
+        return true;
+      } catch (error) {
+        console.error(`Ошибка маркера (ID ${defect.id || 'unknown'}):`, error);
+        return false;
       }
     }
-    else {
-      throw new Error(`Неизвестный формат координат: ${JSON.stringify(defect)}`);
-    }
 
-    const marker = L.marker([lat, lng], {
-      icon: createCustomIcon(defect.type)
-    }).bindPopup(`
-      <b>Тип:</b> ${defect.type}<br>
-      <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
-      <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
-    `);
-    
-    marker.addTo(map);
-    console.log("Добавлен маркер:", defect.type, lat, lng);
-    
-  } catch (e) {
-    console.error("Ошибка маркера:", e, defect);
-  }
-}
-
-    // 5. Загрузка данных
+    // 7. Загрузка данных
     async function loadDefects() {
-  const status = document.getElementById('status');
-  status.textContent = "Загрузка данных...";
-  
-  try {
-    console.log("Попытка подключения к Supabase...");
-    const { data, error } = await supabase
-      .from('defects')
-      .select('*')
-      .order('timestamp', { ascending: false })
-      .limit(100);
-    
-    if (error) {
-      console.error("Ошибка Supabase:", error);
-      throw error;
-    }
-    
-    console.log("Получены данные:", data);
-    if (!data || data.length === 0) {
-      throw new Error("Нет данных в таблице defects");
-    }
-    
-    status.textContent = `Загружено ${data.length} дефектов`;
-    data.forEach(addDefectMarker);
-    
-  } catch (error) {
-    console.error("Фатальная ошибка:", error);
-    status.textContent = `Ошибка: ${error.message}`;
-    status.style.background = 'pink';
-  }
-}
+      if (!supabase) {
+        updateStatus("База данных не подключена", true);
+        return;
+      }
 
-    // 6. Запуск
-    document.addEventListener('DOMContentLoaded', () => {
+      updateStatus("Загрузка данных...");
+      
+      try {
+        const { data, error } = await supabase
+          .from('defects')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .limit(100);
+        
+        if (error) throw error;
+        if (!data?.length) throw new Error("Нет данных о дефектах");
+
+        // Очищаем старые маркеры
+        map.eachLayer(layer => {
+          if (layer instanceof L.Marker) map.removeLayer(layer);
+        });
+
+        // Добавляем новые
+        const successCount = data.filter(addDefectMarker).length;
+        updateStatus(`Загружено: ${successCount}/${data.length} дефектов`);
+        
+      } catch (error) {
+        console.error("Ошибка загрузки:", error);
+        updateStatus(`Ошибка: ${error.message}`, true);
+      }
+    }
+
+    // 8. Основная инициализация
+    document.addEventListener('DOMContentLoaded', async () => {
       console.log("DOM загружен");
-      loadDefects();
+      
+      if (!initSupabase()) return;
+      if (!initMap()) return;
+      
+      // Первая загрузка
+      await loadDefects();
+      
+      // Автообновление каждые 5 минут
+      setInterval(loadDefects, 300000);
     });
   </script>
 </body>

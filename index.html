@@ -3,7 +3,6 @@
 <head>
   <title>Карта дефектов</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/@supabase/supabase-js@2" defer></script>
   <style>
     #map { height: 100vh; }
     .defect-marker {
@@ -59,20 +58,27 @@
     // 1. Инициализация приложения
     console.log("Инициализация приложения...");
     let map;
-    let supabase;
+    let supabaseClient;
 
     // 2. Инициализация Supabase (первая операция)
     function initSupabase() {
-      try {
-        supabase = supabase.createClient(CONFIG.supabase.url, CONFIG.supabase.key);
-        console.log("Supabase инициализирован");
-        return true;
-      } catch (error) {
-        console.error("Ошибка инициализации Supabase:", error);
-        updateStatus("Ошибка подключения к базе", true);
-        return false;
-      }
+  try {
+    // Явная проверка
+    if (typeof supabase === 'undefined') {
+      throw new Error('Supabase library not loaded');
     }
+    
+    supabaseClient = supabase.createClient(
+      'https://scurmlyhinusulzvetad.supabase.co',
+      'eyJhbGciOiJIUzI1NiIs...'
+    );
+    return true;
+  } catch (error) {
+    console.error("Supabase init error:", error);
+    updateStatus("Ошибка подключения к базе", true);
+    return false;
+  }
+}
 
     // 3. Инициализация карты
     function initMap() {
@@ -191,12 +197,16 @@
       
       // Первая загрузка
       await loadDefects();
+
+      window.addEventListener('DOMContentLoaded', () => {
+  if (!initSupabase()) return;
+  initMap();
+  loadDefects();
+});
       
       // Автообновление каждые 5 минут
       setInterval(loadDefects, 300000);
     });
   </script>
-
-  <script src="your-script.js" defer></script>
 </body>
 </html>

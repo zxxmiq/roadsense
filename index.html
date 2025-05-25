@@ -57,6 +57,27 @@
     #locate-btn:active {
       transform: scale(0.95);
     }
+    /* Стиль для маркера геолокации */
+    .location-pin {
+      background: white;
+      border: 2px solid #136AEC;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      position: relative;
+    }
+    .location-pin::after {
+      content: "";
+      position: absolute;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 10px solid #136AEC;
+    }
   </style>
 </head>
 <body>
@@ -84,6 +105,7 @@
     let map;
     let supabaseClient;
     let userLocationMarker = null;
+    let userLocationCircle = null;
 
     // Функция геолокации
     function locateUser() {
@@ -91,8 +113,9 @@
       
       updateStatus("Определение местоположения...");
       
-      // Очищаем предыдущий маркер
+      // Очищаем предыдущие элементы
       if (userLocationMarker) map.removeLayer(userLocationMarker);
+      if (userLocationCircle) map.removeLayer(userLocationCircle);
       
       // Проверяем поддержку геолокации
       if (!navigator.geolocation) {
@@ -105,14 +128,23 @@
         (position) => {
           const userLocation = L.latLng(position.coords.latitude, position.coords.longitude);
           
-          // Создаем маркер с эмодзи 📍
+          // Создаем кастомный маркер
           userLocationMarker = L.marker(userLocation, {
             icon: L.divIcon({
               className: 'location-pin',
-              html: '<div style="font-size:24px">📍</div>',
+              html: '<div class="location-pin"></div>',
               iconSize: [32, 32],
               iconAnchor: [16, 32]
             })
+          }).addTo(map);
+          
+          // Круг точности (фиксированный 5 метров)
+          userLocationCircle = L.circle(userLocation, {
+            radius: 5,
+            color: '#136AEC',
+            fillColor: '#2A93EE',
+            fillOpacity: 0.3,
+            weight: 1
           }).addTo(map);
           
           // Масштабируем карту с анимацией
@@ -160,7 +192,93 @@
       btn.addEventListener('click', locateUser);
     }
 
-    // ... (остальные функции остаются без изменений) ...
+    function updateStatus(message, isError = false) {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.style.background = isError ? '#ffebee' : 'white';
+      status.style.color = isError ? '#d32f2f' : 'black';
+    }
+
+    const iconTypes = {
+      'яма': { color: '#e53935', symbol: '🕳️' },
+      'кочка': { color: '#fb8c00', symbol: '⛰️' },
+      'трещина': { color: '#fdd835', symbol: '⚡' },
+      'default': { color: '#4285f4', symbol: '❓' }
+    };
+
+    function createCustomIcon(type) {
+      const style = iconTypes[type.toLowerCase()] || iconTypes.default;
+      return L.divIcon({
+        className: 'defect-marker',
+        html: `<div class="custom-icon" style="background:${style.color}">${style.symbol}</div>`,
+        iconSize: [30, 30]
+      });
+    }
+
+    function addDefectMarker(defect) {
+      try {
+        let lat, lng;
+        
+        if (defect.coordinates?.coordinates) {
+          [lng, lat] = defect.coordinates.coordinates;
+        } else if (defect.latitude && defect.longitude) {
+          lat = defect.latitude;
+          lng = defect.longitude;
+        } else if (Array.isArray(defect.coordinates)) {
+          [lat, lng] = defect.coordinates;
+          if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+            [lng, lat] = defect.coordinates;
+          }
+        } else {
+          throw new Error("Неизвестный формат координат");
+        }
+
+        const marker = L.marker([lat, lng], {
+          icon: createCustomIcon(defect.type)
+        }).bindPopup(`
+          <b>Тип:</b> ${defect.type}<br>
+          <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
+          <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
+        `);
+        
+        marker.addTo(map);
+        return true;
+      } catch (error) {
+        console.error(`Ошибка маркера (ID ${defect.id || 'unknown'}):`, error);
+        return false;
+      }
+    }
+
+    async function loadDefects() {
+      if (!supabaseClient) {
+        updateStatus("База данных не подключена", true);
+        return;
+      }
+
+      updateStatus("Загрузка данных...");
+      
+      try {
+        const { data, error } = await supabaseClient
+          .from('defects')
+          .select('*')
+          .order('timestamp', { ascending: false })
+          .limit(100);
+        
+        if (error) throw error;
+        if (!data?.length) throw new Error("Нет данных о дефектах");
+
+        map.eachLayer(layer => {
+          if (layer instanceof L.Marker) map.removeLayer(layer);
+        });
+
+        const successCount = data.filter(addDefectMarker).length;
+        updateStatus(`Загружено: ${successCount}/${data.length} дефектов`);
+        
+      } catch (error) {
+        console.error("Ошибка загрузки:", error);
+        updateStatus(`Ошибка: ${error.message}`, true);
+      }
+    }
 
     // Инициализация приложения
     function initSupabase() {

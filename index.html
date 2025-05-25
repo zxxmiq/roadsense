@@ -57,6 +57,27 @@
     #locate-btn:active {
       transform: scale(0.95);
     }
+    /* Стиль для круга геолокации */
+    .location-pin {
+      background: white;
+      border: 2px solid #136AEC;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      position: relative;
+    }
+    .location-pin::after {
+      content: "";
+      position: absolute;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 10px solid #136AEC;
+    }
   </style>
 </head>
 <body>
@@ -85,17 +106,79 @@
     let map;
     let supabaseClient;
     let userLocationCircle = null; // Для хранения круга геолокации
+    let userLocationMarker = null; // Для маркера местоположения
 
     // Функция геолокации
-    function locateUser() {
+    ffunction locateUser() {
       if (!map) return;
       
-      map.locate({
-        setView: true,
-        maxZoom: 16,
-        timeout: 10000,
-        enableHighAccuracy: true // Для большей точности
-      });
+      updateStatus("Определение местоположения...");
+      
+      // Очищаем предыдущие элементы
+      if (userLocationMarker) map.removeLayer(userLocationMarker);
+      if (userLocationCircle) map.removeLayer(userLocationCircle);
+      
+      // Проверяем поддержку геолокации
+      if (!navigator.geolocation) {
+        updateStatus("Геолокация не поддерживается вашим браузером", true);
+        return;
+      }
+      
+      // Запрашиваем геолокацию напрямую через API браузера
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude, accuracy } = position.coords;
+          const userLocation = L.latLng(latitude, longitude);
+          
+          // Создаем кастомный маркер
+          userLocationMarker = L.marker(userLocation, {
+            icon: L.divIcon({
+              className: 'location-pin',
+              html: '<div class="location-pin"></div>',
+              iconSize: [32, 32],
+              iconAnchor: [16, 32]
+            })
+          }).addTo(map);
+          
+          // Круг точности (фиксированный 5 метров)
+          userLocationCircle = L.circle(userLocation, {
+            radius: 5,
+            color: '#136AEC',
+            fillColor: '#2A93EE',
+            fillOpacity: 0.3,
+            weight: 1
+          }).addTo(map);
+          
+          // Масштабируем карту с анимацией
+          map.flyTo(userLocation, 17, {
+            duration: 1,
+            easeLinearity: 0.25
+          });
+          
+          updateStatus("Местоположение определено");
+        },
+        (error) => {
+          console.error("Ошибка геолокации:", error);
+          let message = "Ошибка определения местоположения";
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              message = "Доступ к геолокации запрещен. Разрешите доступ в настройках браузера";
+              break;
+            case error.POSITION_UNAVAILABLE:
+              message = "Информация о местоположении недоступна";
+              break;
+            case error.TIMEOUT:
+              message = "Время ожидания истекло";
+              break;
+          }
+          updateStatus(message, true);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
     }
 
     // Инициализация карты

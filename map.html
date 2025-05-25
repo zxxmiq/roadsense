@@ -45,6 +45,14 @@
     const supabaseUrl = 'https://scurmlyhinusulzvetad.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjdXJtbHloaW51c3VsenZldGFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgxMjEwNjUsImV4cCI6MjA2MzY5NzA2NX0.D4cshax0gc7VG_GYawBckqVFQesOGJyPyDznCqsfs0k';
     const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    console.log("Проверка Supabase...");
+supabase.from('defects').select('*', { count: 'exact' })
+  .then(({ count }) => {
+    console.log(`Подключение к Supabase успешно, всего записей: ${count}`);
+  })
+  .catch(error => {
+    console.error("Ошибка подключения к Supabase:", error);
+  });
     
     // 2. Создание карты
     const map = L.map('map').setView([55.751244, 37.618423], 13);
@@ -69,77 +77,79 @@
 
     // 4. Функция добавления маркера
     function addDefectMarker(defect) {
-      try {
-        // Обработка разных форматов координат
-        let lat, lng;
-        
-        if (Array.isArray(defect.coordinates)) {
-          // Если координаты в массиве [lat, lng] или [lng, lat]
-          [lat, lng] = defect.coordinates;
-        } else if (defect.coordinates?.coordinates) {
-          // Если координаты в GeoJSON формате {coordinates: [lng, lat]}
-          [lng, lat] = defect.coordinates.coordinates;
-        } else {
-          console.error("Неизвестный формат координат:", defect);
-          return;
-        }
-
-        const marker = L.marker([lat, lng], {
-          icon: createCustomIcon(defect.type)
-        }).bindPopup(`
-          <b>Тип:</b> ${defect.type}<br>
-          <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
-          <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
-        `);
-        
-        marker.addTo(map);
-        console.log("Добавлен маркер:", defect);
-      } catch (e) {
-        console.error("Ошибка добавления маркера:", e, defect);
+  try {
+    let lat, lng;
+    
+    // Формат 1: GeoJSON { coordinates: [lng, lat] }
+    if (defect.coordinates?.coordinates) {
+      [lng, lat] = defect.coordinates.coordinates;
+    } 
+    // Формат 2: Прямые поля в объекте
+    else if (defect.latitude && defect.longitude) {
+      lat = defect.latitude;
+      lng = defect.longitude;
+    }
+    // Формат 3: Массив [lat, lng] или [lng, lat]
+    else if (Array.isArray(defect.coordinates)) {
+      lat = defect.coordinates[0];
+      lng = defect.coordinates[1];
+      // Проверяем, не перепутаны ли lat/lng
+      if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        [lng, lat] = defect.coordinates; // Меняем местами если значения выходят за пределы
       }
     }
+    else {
+      throw new Error(`Неизвестный формат координат: ${JSON.stringify(defect)}`);
+    }
+
+    const marker = L.marker([lat, lng], {
+      icon: createCustomIcon(defect.type)
+    }).bindPopup(`
+      <b>Тип:</b> ${defect.type}<br>
+      <b>Дата:</b> ${new Date(defect.timestamp).toLocaleString()}<br>
+      <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
+    `);
+    
+    marker.addTo(map);
+    console.log("Добавлен маркер:", defect.type, lat, lng);
+    
+  } catch (e) {
+    console.error("Ошибка маркера:", e, defect);
+  }
+}
 
     // 5. Загрузка данных
     async function loadDefects() {
-      console.log("Загрузка дефектов...");
-      const status = document.getElementById('status');
-      
-      try {
-        status.textContent = "Загрузка данных...";
-        
-        const { data, error } = await supabase
-          .from('defects')
-          .select('*')
-          .order('timestamp', { ascending: false })
-          .limit(100);
-        
-        if (error) throw error;
-        
-        console.log("Получено дефектов:", data.length);
-        status.textContent = `Загружено ${data.length} дефектов`;
-        
-        data.forEach(addDefectMarker);
-        
-        // Автоматическое приближение к маркерам
-        if (data.length > 0) {
-          const firstMarker = data[0];
-          let lat, lng;
-          
-          if (Array.isArray(firstMarker.coordinates)) {
-            [lat, lng] = firstMarker.coordinates;
-          } else {
-            [lng, lat] = firstMarker.coordinates.coordinates;
-          }
-          
-          map.setView([lat, lng], 13);
-        }
-        
-      } catch (error) {
-        console.error("Ошибка загрузки:", error);
-        status.textContent = `Ошибка: ${error.message}`;
-        status.style.background = 'pink';
-      }
+  const status = document.getElementById('status');
+  status.textContent = "Загрузка данных...";
+  
+  try {
+    console.log("Попытка подключения к Supabase...");
+    const { data, error } = await supabase
+      .from('defects')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(100);
+    
+    if (error) {
+      console.error("Ошибка Supabase:", error);
+      throw error;
     }
+    
+    console.log("Получены данные:", data);
+    if (!data || data.length === 0) {
+      throw new Error("Нет данных в таблице defects");
+    }
+    
+    status.textContent = `Загружено ${data.length} дефектов`;
+    data.forEach(addDefectMarker);
+    
+  } catch (error) {
+    console.error("Фатальная ошибка:", error);
+    status.textContent = `Ошибка: ${error.message}`;
+    status.style.background = 'pink';
+  }
+}
 
     // 6. Запуск
     document.addEventListener('DOMContentLoaded', () => {

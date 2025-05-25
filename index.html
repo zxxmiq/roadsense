@@ -31,127 +31,117 @@
       z-index: 1000;
       box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
-    /* НОВОЕ: Стиль для кнопки геолокации */
+    /* НОВЫЙ СТИЛЬ КНОПКИ */
     #locate-btn {
       position: absolute;
-      top: 70px;
-      right: 10px;
+      bottom: 20px;
+      right: 20px;
       z-index: 1000;
-      padding: 8px 12px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: white;
       border: none;
-      border-radius: 4px;
-      background: #fff;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
       cursor: pointer;
+      transition: all 0.2s;
+    }
+    #locate-btn:hover {
+      background: #f0f0f0;
+      transform: scale(1.05);
+    }
+    #locate-btn:active {
+      transform: scale(0.95);
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <div id="status">Инициализация карты...</div>
+  <!-- Кнопка будет добавлена через JS -->
 
-  <!-- Подключаем библиотеки в правильном порядке -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
   
   <script>
-    // 0. Конфигурация (вынесено отдельно для наглядности)
+    // Конфигурация
     const CONFIG = {
       supabase: {
         url: 'https://scurmlyhinusulzvetad.supabase.co',
         key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNjdXJtbHloaW51c3VsenZldGFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgxMjEwNjUsImV4cCI6MjA2MzY5NzA2NX0.D4cshax0gc7VG_GYawBckqVFQesOGJyPyDznCqsfs0k'
       },
-      // ИЗМЕНЕНО: Центр на Санкт-Петербург
       map: {
-        center: [59.934280, 30.335098], // Координаты Дворцовой площади
+        center: [59.934280, 30.335098], // СПб
         zoom: 13,
         tileLayer: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
       }
     };
 
-    // 1. Инициализация приложения
-    console.log("Инициализация приложения...");
+    // Глобальные переменные
+    let map;
     let supabaseClient;
+    let userLocationCircle = null; // Для хранения круга геолокации
 
-    // НОВОЕ: Функция геолокации
+    // Функция геолокации
     function locateUser() {
-      if (!window.mapInstance) {
-        console.error("Карта не инициализирована");
-        return;
-      }
+      if (!map) return;
       
-      window.mapInstance.locate({
+      map.locate({
         setView: true,
         maxZoom: 16,
         timeout: 10000,
-        enableHighAccuracy: true
+        enableHighAccuracy: true // Для большей точности
       });
+    }
 
-      // Успешное определение местоположения
-      window.mapInstance.on('locationfound', (e) => {
-        const radius = e.accuracy / 2;
-        L.circle(e.latlng, {
-          radius: radius,
+    // Инициализация карты
+    function initMap() {
+      map = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
+      L.tileLayer(CONFIG.map.tileLayer).addTo(map);
+      
+      // Создаем кнопку геолокации
+      const btn = document.createElement('button');
+      btn.id = 'locate-btn';
+      btn.innerHTML = '📍';
+      document.body.appendChild(btn);
+      btn.addEventListener('click', locateUser);
+      
+      // Обработчики геолокации
+      map.on('locationfound', (e) => {
+        // Удаляем предыдущий круг, если есть
+        if (userLocationCircle) {
+          map.removeLayer(userLocationCircle);
+        }
+        
+        // Создаем новый круг с фиксированным радиусом 5 метров
+        userLocationCircle = L.circle(e.latlng, {
+          radius: 5, // Фиксированный радиус 5 метров
           color: '#136AEC',
           fillColor: '#2A93EE',
-          fillOpacity: 0.2
-        }).addTo(window.mapInstance).bindPopup("Вы здесь (точность ±" + radius.toFixed(0) + "м)");
+          fillOpacity: 0.3, // Полупрозрачный
+          weight: 1
+        }).addTo(map);
+        
+        // Центрируем карту с небольшим смещением вверх
+        map.setView(e.latlng, 16, {
+          animate: true,
+          duration: 1
+        });
       });
-
-      // Ошибка геолокации
-      window.mapInstance.on('locationerror', (e) => {
+      
+      map.on('locationerror', (e) => {
         console.error("Геолокация недоступна:", e.message);
         updateStatus("Разрешите доступ к геопозиции", true);
       });
     }
 
-    // 2. Инициализация Supabase (первая операция)
-    function initSupabase() {
-      try {
-        if (typeof supabase === 'undefined') {
-          throw new Error('Библиотека Supabase не загружена');
-        }
-        
-        window.supabaseClient = supabase.createClient(
-          CONFIG.supabase.url,
-          CONFIG.supabase.key
-        );
-        console.log("Supabase подключен");
-        return true;
-      } catch (error) {
-        console.error("Ошибка Supabase:", error);
-        updateStatus("Ошибка подключения к базе", true);
-        return false;
-      }
-    }
-
-    // 3. Инициализация карты
-    function initMap() {
-      try {
-        if (window.mapInstance && !window.mapInstance._destroyed) {
-          return true;
-        }
-        
-        window.mapInstance = L.map('map').setView(CONFIG.map.center, CONFIG.map.zoom);
-        L.tileLayer(CONFIG.map.tileLayer).addTo(window.mapInstance);
-        
-        // НОВОЕ: Добавляем кнопку геолокации
-        const btn = document.createElement('button');
-        btn.id = 'locate-btn';
-        btn.innerHTML = '📍 Мое местоположение';
-        document.body.appendChild(btn);
-        btn.addEventListener('click', locateUser);
-        
-        console.log("Карта создана");
-        return true;
-      } catch (error) {
-        console.error("Ошибка карты:", error);
-        updateStatus("Ошибка создания карты", true);
-        return false;
-      }
-    }
-
-    // 4. Обновление статуса
+    // Остальные функции (updateStatus, createCustomIcon, addDefectMarker, loadDefects)
+    // ... (остаются без изменений, как в вашем предыдущем коде)
+    
     function updateStatus(message, isError = false) {
       const status = document.getElementById('status');
       status.textContent = message;
@@ -159,7 +149,6 @@
       status.style.color = isError ? '#d32f2f' : 'black';
     }
 
-    // 5. Кастомные иконки
     const iconTypes = {
       'яма': { color: '#e53935', symbol: '🕳️' },
       'кочка': { color: '#fb8c00', symbol: '⛰️' },
@@ -176,13 +165,8 @@
       });
     }
 
-    // 6. Добавление маркера
     function addDefectMarker(defect) {
       try {
-        if (!window.mapInstance || window.mapInstance._destroyed) {
-          throw new Error("Карта не инициализирована");
-        }
-
         let lat, lng;
         
         if (defect.coordinates?.coordinates) {
@@ -207,7 +191,7 @@
           <b>Координаты:</b> ${lat.toFixed(5)}, ${lng.toFixed(5)}
         `);
         
-        marker.addTo(window.mapInstance);
+        marker.addTo(map);
         return true;
       } catch (error) {
         console.error(`Ошибка маркера (ID ${defect.id || 'unknown'}):`, error);
@@ -215,9 +199,8 @@
       }
     }
 
-    // 7. Загрузка данных
     async function loadDefects() {
-      if (!window.supabaseClient) {
+      if (!supabaseClient) {
         updateStatus("База данных не подключена", true);
         return;
       }
@@ -225,7 +208,7 @@
       updateStatus("Загрузка данных...");
       
       try {
-        const { data, error } = await window.supabaseClient
+        const { data, error } = await supabaseClient
           .from('defects')
           .select('*')
           .order('timestamp', { ascending: false })
@@ -234,8 +217,8 @@
         if (error) throw error;
         if (!data?.length) throw new Error("Нет данных о дефектах");
 
-        window.mapInstance.eachLayer(layer => {
-          if (layer instanceof L.Marker) window.mapInstance.removeLayer(layer);
+        map.eachLayer(layer => {
+          if (layer instanceof L.Marker) map.removeLayer(layer);
         });
 
         const successCount = data.filter(addDefectMarker).length;
@@ -247,21 +230,26 @@
       }
     }
 
-    // 8. Основная инициализация
+    // Инициализация приложения
+    function initSupabase() {
+      try {
+        supabaseClient = supabase.createClient(CONFIG.supabase.url, CONFIG.supabase.key);
+        return true;
+      } catch (error) {
+        console.error("Ошибка Supabase:", error);
+        updateStatus("Ошибка подключения к базе", true);
+        return false;
+      }
+    }
+
     function initializeApp() {
-      console.log("Инициализация приложения...");
-      
       if (!initSupabase()) return;
-      if (!initMap()) return;
-      
-      // НОВОЕ: Автоматический запрос геолокации
-      locateUser();
-      
+      initMap();
       loadDefects();
       setInterval(loadDefects, 300000);
     }
 
-    // Запускаем приложение
+    // Запуск
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initializeApp);
     } else {

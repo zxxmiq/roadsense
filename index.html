@@ -3,6 +3,7 @@
 <head>
   <title>Карта дефектов</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/@supabase/supabase-js@2" defer></script>
   <style>
     #map { height: 100vh; }
     .defect-marker {
@@ -195,5 +196,7 @@
       setInterval(loadDefects, 300000);
     });
   </script>
+
+  <script src="your-script.js" defer></script>
 </body>
 </html>
